@@ -29,7 +29,6 @@ try {
       quantity,
       description,
       imageUrl,
-      createdBy: req.admin._id
     });
 
     res.status(201).json({
