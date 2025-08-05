@@ -99,7 +99,7 @@ const verifyEmail = async (req, res) => {
         if (!admin) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid or expired verification token'
+                message: 'expired verification token'
             });
         }
 
@@ -116,18 +116,8 @@ const verifyEmail = async (req, res) => {
         );
 
         res.status(200).json({
-            success: true,
             message: 'Email verified successfully',
-            token: authToken,
-            admin: {
-                id: admin._id,
-                name: admin.name,
-                email: admin.email,
-                phone: admin.phone,
-                role: admin.role,
-                profileImage: admin.profileImage || null,
-                isVerified: admin.isVerified
-            }
+            
         });
     } catch (err) {
         console.error('Email verification error:', err);
@@ -173,7 +163,7 @@ const login = async (req, res) => {
     }
 
     // Verify password
-    const isMatch = await admin.comparePassword(password); // Make sure you have this method in your Admin model
+    const isMatch = await admin.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -186,7 +176,7 @@ const login = async (req, res) => {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
     });
 
-    // Set cookie (optional)
+    // Set cookie
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
