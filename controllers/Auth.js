@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const Admin = require('../models/Admin');
 const { sendVerificationEmail } = require('../utils/emailSender');
+const { cloudinary } = require('../config/cloudinary');
 
 // Register a new admin
 // POST /api/auth/register
@@ -207,9 +208,130 @@ const login = async (req, res) => {
   }
 };
 
+// Get all registered admins (only for Super Admin)
+const getAllUsers = async (req, res) => {
+  try {
+    // Only super admins can access this route
+    if (req.admin.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You are not authorized to access this resource'
+      });
+    }
+
+    const admins = await Admin.find().select('-password -emailVerificationToken -emailVerificationExpires');
+
+    res.status(200).json({
+      success: true,
+      count: admins.length,
+      users: admins
+    });
+  } catch (err) {
+    console.error('Get all users error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users'
+    });
+  }
+};
+
+// controllers/authController.js
+
+
+const getProfile = async (req, res) => {
+  try {
+    const userId = req.user.id; // assuming you have authentication middleware setting req.user
+    const user = await Admin.findById(userId).select('-password'); // exclude password
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ admin: user }); // frontend expects { admin: user }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+// Update profile
+// PUT /api/auth/profile
+const updateProfile = async (req, res) => {
+  try {
+    const { name, phone } = req.body;
+
+    const admin = await Admin.findById(req.admin.id);
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Update text fields
+    admin.name = name || admin.name;
+    admin.phone = phone || admin.phone;
+
+    // If a new profile image is uploaded
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: 'profiles',
+        use_filename: true,
+      });
+
+      admin.profileImage = result.secure_url;
+
+      // Remove local file after upload
+      fs.unlinkSync(req.file.path);
+    }
+
+    await admin.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      admin,
+    });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ success: false, message: 'Profile update failed' });
+  }
+};
+
+// Change password
+// PUT /api/auth/change-password
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const admin = await Admin.findById(req.admin.id).select('+password');
+
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const isMatch = await admin.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    admin.password = await bcrypt.hash(newPassword, salt);
+
+    await admin.save();
+    res.status(200).json({ success: true, message: 'Password changed successfully' });
+  } catch (err) {
+    console.error('Password change error:', err);
+    res.status(500).json({ success: false, message: 'Password change failed' });
+  }
+};
+
+
+
 
 module.exports = {
     register,
     verifyEmail,
-    login
+    login,
+    getAllUsers,
+    getProfile,
+    updateProfile,
+    changePassword
 };
