@@ -34,11 +34,9 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // Attach to request
     req.admin = admin;
     req.role = admin.role;
-    req.user = admin; // ✅ Optional, for compatibility with other middleware
-
+    req.user = admin;
     next();
   } catch (err) {
     console.error('Auth Middleware Error:', err.message);

@@ -7,7 +7,7 @@ exports.createOrder = async (req, res) => {
   try {
     const { products, totalAmount, customerName, customerContact } = req.body;
 
-    // Just create the order (don't check or deduct stock here)
+    // create the order 
     const order = await Order.create({
       products,
       totalAmount,
@@ -90,8 +90,8 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
-    // If confirming order, check stock and deduct it
-    if (status === 'Completed' && order.status !== 'Completed') {
+    // check stock and deduct it
+    if (order.status !== 'Completed') {
       for (const item of order.products) {
         const product = await Product.findById(item.product._id);
 
