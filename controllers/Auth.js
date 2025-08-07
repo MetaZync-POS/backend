@@ -2,8 +2,9 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const Admin = require('../models/Admin');
+const fs = require('fs');
 const { sendVerificationEmail } = require('../utils/emailSender');
-const { cloudinary } = require('../config/cloudinary');
+const cloudinary = require('../config/cloudinary');
 
 // Register a new admin
 // POST /api/auth/register
@@ -108,13 +109,6 @@ const verifyEmail = async (req, res) => {
         admin.emailVerificationToken = undefined;
         admin.emailVerificationExpires = undefined;
         await admin.save();
-
-        //create auth token
-        const authToken = jwt.sign(
-            { id: admin._id, role: admin.role },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-        );
 
         res.status(200).json({
             message: 'Email verified successfully',
@@ -235,19 +229,18 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-// controllers/authController.js
-
-
+// Get profile
+// GET /api/auth/profile
 const getProfile = async (req, res) => {
   try {
-    const userId = req.user.id; // assuming you have authentication middleware setting req.user
-    const user = await Admin.findById(userId).select('-password'); // exclude password
+    const userId = req.user.id;
+    const user = await Admin.findById(userId).select('-password');
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ admin: user }); // frontend expects { admin: user }
+    res.json({ admin: user });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -273,13 +266,13 @@ const updateProfile = async (req, res) => {
     // If a new profile image is uploaded
     if (req.file) {
       const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'profiles',
+        folder: 'profile_images',
         use_filename: true,
       });
 
       admin.profileImage = result.secure_url;
 
-      // Remove local file after upload
+
       fs.unlinkSync(req.file.path);
     }
 
@@ -323,6 +316,58 @@ const changePassword = async (req, res) => {
   }
 };
 
+// POST /api/auth/forgot-password
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  const admin = await Admin.findOne({ email });
+  if (!admin) {
+    return res.status(404).json({ success: false, message: 'No admin with that email' });
+  }
+
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const resetTokenExpires = Date.now() + 3600000;
+
+  admin.passwordResetToken = resetToken;
+  admin.passwordResetExpires = resetTokenExpires;
+  await admin.save();
+
+  const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+  try {
+    await sendVerificationEmail(email, resetUrl);
+    res.status(200).json({ success: true, message: 'Password reset email sent' });
+  } catch (error) {
+    admin.passwordResetToken = undefined;
+    admin.passwordResetExpires = undefined;
+    await admin.save();
+    res.status(500).json({ success: false, message: 'Email sending failed' });
+  }
+};
+
+// PUT /api/auth/reset-password
+const resetPassword = async (req, res) => {
+  const { token } = req.query;
+  const { newPassword } = req.body;
+
+  const admin = await Admin.findOne({
+    passwordResetToken: token,
+    passwordResetExpires: { $gt: Date.now() }
+  });
+
+  if (!admin) {
+    return res.status(400).json({ success: false, message: 'Token invalid or expired' });
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  admin.password = await bcrypt.hash(newPassword, salt);
+  admin.passwordResetToken = undefined;
+  admin.passwordResetExpires = undefined;
+
+  await admin.save();
+  res.status(200).json({ success: true, message: 'Password reset successfully' });
+};
+
+
 
 
 
@@ -333,5 +378,7 @@ module.exports = {
     getAllUsers,
     getProfile,
     updateProfile,
-    changePassword
+    changePassword,
+    forgotPassword,
+    resetPassword
 };
