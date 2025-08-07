@@ -16,8 +16,9 @@ const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
+app.options('', cors());
 app.use(cors({
-  origin: 'https://frontend-lac-gamma-72.vercel.app',
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
